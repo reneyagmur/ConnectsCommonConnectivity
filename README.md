@@ -30,7 +30,7 @@ Create a virtual environment and install this project in editable mode:
 ```bash
 uv venv
 source .venv/bin/activate
-uv pip install -e .[dev]
+uv pip install -e .\[dev\]
 ```
 
 Run tests:
