@@ -281,7 +281,7 @@ def serialize(objects, fmt: str) -> str:
                 if parent_obj is not None and hasattr(parent_obj, "id"):
                     data["parent_identifier"] = parent_obj.id
             # Lists: child_identifiers, descendants
-            for list_slot in [("child_identifiers"), ("descendants")]:
+            for list_slot, id_slot in [("child_identifiers", "child_identifier_ids"), ("descendants", "descendant_ids")]:
                 val = getattr(obj, list_slot, None)
                 if val and isinstance(val, list) and all(hasattr(v, "id") for v in val):
                     data[list_slot] = [v.id for v in val]
