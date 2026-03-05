@@ -14,6 +14,10 @@
 			"mount": "microns1412"
 		},
 		{
+			"id": "95001258-5e4f-449d-bbb7-6a09a2348f0d",
+			"mount": "visp_deltalakes"
+		},
+		{
 			"id": "aff09b9b-5cdc-49ef-8e39-358a8ead98d8",
 			"mount": "visp-patchseq-taxonomy-info"
 		}
