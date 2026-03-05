@@ -1,0 +1,26 @@
+flowchart LR
+    core["Core<br/><i>DataSet<br/>DataItem<br/>DataItemDataSetAssociation<br/>SpatialLocation</i>"]
+    storage["Storage<br/><i>ZarrArray<br/>ZarrDataset<br/>ParquetDataset</i>"]
+    brain_region["Brain Region<br/><i>BrainRegion<br/>BrainRegionAssociation</i>"]
+    clustering["Clustering<br/><i>AlgorithmRun<br/>ClusterHierarchy<br/>Cluster<br/>ClusterMembership<br/>HierachyCategory</i>"]
+    projection["Projection<br/><i>ProjectionMeasurementMatrix</i>"]
+    cell_cell["Cell-Cell Connectivity<br/><i>CellCellConnectivityLong<br/>CellCellMeasurementMatrix</i>"]
+    cell_gene["Cell-Gene Expression<br/><i>CellGeneData<br/>BarcodingExperimentMetadata<br/>GeneMetadata<br/>CellMetadata</i>"]
+    cell_features["Cell Features<br/><i>CellFeatureSet<br/>CellFeatureDefinition<br/>CellFeatureMatrix<br/>CellFeatureMeasurement</i>"]
+    single_cell["Single Cell<br/><i>SingleCellReconstruction</i>"]
+    mappings["Mappings<br/><i>MappingSet<br/>CellToCellMapping<br/>CellToClusterMapping<br/>ClusterToClusterMapping</i>"]
+
+    clustering -->|"input_dataset, item"| core
+    brain_region -->|"dataitem_id"| core
+    projection -->|"data_item_index"| core
+    cell_cell -->|"pre/postsynaptic cell"| core
+    cell_gene -->|"dataitem_id"| core
+    cell_features -->|"dataitem_id"| core
+    single_cell -->|"id, soma_location"| core
+    mappings -->|"source/target cell"| core
+    projection -->|"values (Zarr)"| storage
+    cell_cell -->|"values (Zarr)"| storage
+    cell_gene -->|"matrix, metadata"| storage
+    cell_features -->|"parquet_path"| storage
+    projection -->|"region_index"| brain_region
+    mappings -->|"source/target cluster"| clustering
