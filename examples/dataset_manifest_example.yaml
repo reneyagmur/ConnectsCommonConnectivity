@@ -23,10 +23,10 @@ assets:
     class: ProjectionMeasurementMatrix
     format: parquet
     path: data/projection_measurements.parquet
-  cluster_hierarchies:
-    class: ClusterHierarchy
+  taxonomies:
+    class: Taxonomy
     format: json
-    path: data/cluster_hierarchy.json
+    path: data/taxonomies.json
 
 # Optional integrity hashes (sha256) could be added later
 # hashes:

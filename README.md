@@ -131,7 +131,7 @@ The schema has been split into logical modules for clarity:
 schemas/
 	base_schema.yaml            # prefixes, types, enums, global slots
 	core_schema.yaml            # DataSet, DataItem
-	clustering_schema.yaml      # AlgorithmRun, ClusterHierarchy, Cluster, ClusterMembership
+	clustering_schema.yaml      # AlgorithmRun, Taxonomy, Cluster, ClusterMembership
 	brain_region_schema.yaml    # BrainRegion hierarchy
 	projection_schema.yaml     # ProjectionMeasurement* + ProjectionMeasurementTypeMetadata
 	connectivity_schema.yaml    # aggregator (imports all above) – primary entry point
@@ -236,9 +236,12 @@ Cluster {
     float distance_to_parent  
     string members  
 }
-ClusterHierarchy {
+Taxonomy {
     string id  
     string name  
+    string description  
+    string publication  
+    string version  
 }
 ClusterMembership {
     float membership_score  
@@ -306,7 +309,6 @@ ZarrDataset {
 }
 
 AlgorithmRun ||--|o DataSet : "input_dataset"
-AlgorithmRun ||--}o ClusterHierarchy : "produced_hierarchies"
 BrainRegion ||--|o BrainRegion : "parent_identifier"
 BrainRegion ||--}o BrainRegion : "child_identifiers"
 BrainRegion ||--}o BrainRegion : "descendants"
@@ -329,18 +331,22 @@ CellToCellMapping ||--|| DataItem : "source_cell"
 CellToCellMapping ||--|| DataItem : "target_cell"
 CellToCellMapping ||--|| MappingSet : "mapping_set"
 CellToClusterMapping ||--|| Cluster : "target_cluster"
+CellToClusterMapping ||--|o Taxonomy : "target_taxonomy"
 CellToClusterMapping ||--|| DataItem : "source_cell"
 CellToClusterMapping ||--|| MappingSet : "mapping_set"
 Cluster ||--|o Cluster : "parent"
 Cluster ||--}o Cluster : "children"
-ClusterHierarchy ||--|o AlgorithmRun : "run"
-ClusterHierarchy ||--|o Cluster : "root"
-ClusterHierarchy ||--}o Cluster : "clusters"
+Cluster ||--|o Taxonomy : "taxonomy"
 ClusterMembership ||--|o Cluster : "cluster"
 ClusterMembership ||--|o DataItem : "item"
+ClusterMembership ||--|o Taxonomy : "taxonomy"
 ClusterToClusterMapping ||--|| Cluster : "source_cluster"
 ClusterToClusterMapping ||--|| Cluster : "target_cluster"
+ClusterToClusterMapping ||--|o Taxonomy : "source_taxonomy"
+ClusterToClusterMapping ||--|o Taxonomy : "target_taxonomy"
 ClusterToClusterMapping ||--|| MappingSet : "mapping_set"
+Taxonomy ||--|o Cluster : "root"
+Taxonomy ||--}o Cluster : "clusters"
 DataItem ||--|| DataSet : "dataset"
 MappingSet ||--|| DataSet : "source_dataset"
 MappingSet ||--|| DataSet : "target_dataset"

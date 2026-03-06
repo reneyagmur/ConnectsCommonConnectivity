@@ -21,7 +21,6 @@ classes:
       - json_object
       - run_timestamp
       - input_dataset
-      - produced_hierarchies
       - score_description
       - distance_description
     slot_usage:
@@ -40,32 +39,46 @@ classes:
         description: The dataset that was clustered.
       json_object:
         description: Arbitrary algorithm parameters encoded as JSON object string.
-      produced_hierarchies:
-        range: ClusterHierarchy
-        multivalued: true
-        inlined: true
       score_description:
         range: string
         description: Description of the scoring metric used for clusters (e.g., silhouette score).
       distance_description:
         range: string
         description: Description of the distance metric used (e.g., Euclidean, cosine).
-  ClusterHierarchy:
-    description: A complete clustering result (tree or DAG) from one algorithm run.
+
+  Taxonomy:
+    description: >
+      A named classification system (e.g., a cell type taxonomy).
+      Serves as the namespace for Cluster IDs and the reference
+      target for ClusterMembership and CellToClusterMapping.
+    mixins:
+      - ProjectScoped
     slots:
       - id
-      - run
+      - name
+      - description
+      - publication
+      - version
       - root
       - clusters
     slot_usage:
-      run:
-        range: AlgorithmRun
+      name:
+        range: string
+        required: true
+      description:
+        range: string
+      publication:
+        range: string
+        description: DOI or citation for published taxonomies.
+      version:
+        range: string
+      root:
+        range: Cluster
+        description: Root cluster of the taxonomy (omit if flat).
       clusters:
         range: Cluster
         multivalued: true
         inlined: false
-      root:
-        range: Cluster
 
   Cluster:
     description: A node (cluster) in a hierarchical clustering structure.
@@ -78,6 +91,7 @@ classes:
       - hex_color
       - heirachy_category
       - distance_to_parent
+      - taxonomy
     mixins:
       - ProjectScoped
     slot_usage:
@@ -101,6 +115,9 @@ classes:
       score:
         range: float
         description: Cluster quality metric (e.g., silhouette score).
+      taxonomy:
+        range: Taxonomy
+        description: The taxonomy this cluster belongs to.
 
   ClusterMembership:
     description: Association linking a DataItem to a Cluster, with optional soft membership or distance metrics.
@@ -112,6 +129,7 @@ classes:
       - membership_score
       - probability
       - distance
+      - taxonomy
     slot_usage:
       probability:
         description: Normalized probability of membership (sums to 1 across clusters for a given item). Optional, assume 100% if misisng.
@@ -123,6 +141,10 @@ classes:
         description: Distance between the item and the cluster centroid. (Smaller is better).
       cluster:
         inlined: false
+      taxonomy:
+        range: Taxonomy
+        description: The taxonomy that the referenced cluster belongs to.
+
   HierachyCategory:
     description: A set of names to give to different levels of resolution within a hierachical clustering. Allowing scientists to annotate consistent levels of detail within a clustering result. (i.e. class, subclass, supertypes, type, subtype, etc)
     slots:
@@ -142,14 +164,10 @@ slots:
     description: Timestamp when the algorithm was executed.
   input_dataset:
     description: Identifier for input dataset.
-  produced_hierarchies:
-    description: Hierarchies produced in this run.
-  run:
-    description: The AlgorithmRun producing this hierarchy.
   root:
-    description: The root cluster of the hierarchy.
+    description: The root cluster of the taxonomy.
   clusters:
-    description: All clusters in the hierarchy.
+    description: All clusters in the taxonomy.
   parent:
     description: Direct parent cluster (omit for root).
   children:
@@ -171,6 +189,10 @@ slots:
   cluster:
     description: Cluster referenced in a membership association.
     range: Cluster
+  taxonomy:
+    description: The taxonomy (classification system) this entity is associated with.
+    range: Taxonomy
+    inlined: false
   heirachy_category:
     range: HierachyCategory
     inlined: false
@@ -185,3 +207,6 @@ slots:
     description: Description of the scoring metric used for clusters.
   distance_description:
     description: Description of the distance metric used for clustering.
+  version:
+    description: Version identifier (e.g., for a taxonomy revision).
+    range: string

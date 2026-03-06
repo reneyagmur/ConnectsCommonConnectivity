@@ -43,7 +43,7 @@ MODULES = [
            ["BrainRegion", "BrainRegionAssociation"],
            "#BF8F00", "#FFF2CC"),
     Module("clustering", "Clustering",
-           ["AlgorithmRun", "ClusterHierarchy", "Cluster",
+           ["AlgorithmRun", "Taxonomy", "Cluster",
             "ClusterMembership", "HierachyCategory"],
            "#7030A0", "#E2D1F0"),
     Module("projection", "Projection",

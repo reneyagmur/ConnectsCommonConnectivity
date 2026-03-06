@@ -88,6 +88,7 @@ classes:
       - mapping_set
       - source_cell
       - target_cluster
+      - target_taxonomy
       - score
       - probability
       - notes
@@ -103,6 +104,9 @@ classes:
       target_cluster:
         range: Cluster
         required: true
+      target_taxonomy:
+        range: Taxonomy
+        description: The taxonomy that the target cluster belongs to.
       score:
         range: float
       notes:
@@ -115,6 +119,8 @@ classes:
       - mapping_set
       - source_cluster
       - target_cluster
+      - source_taxonomy
+      - target_taxonomy
       - score
       - probability
       - notes
@@ -130,6 +136,12 @@ classes:
       target_cluster:
         range: Cluster
         required: true
+      source_taxonomy:
+        range: Taxonomy
+        description: The taxonomy that the source cluster belongs to.
+      target_taxonomy:
+        range: Taxonomy
+        description: The taxonomy that the target cluster belongs to.
       score:
         range: float
       notes:
@@ -158,5 +170,13 @@ slots:
     description: Author or organization who produced this mapping.
   created_at:
     description: Timestamp when the mapping set was created.
+  source_taxonomy:
+    description: The taxonomy that the source cluster belongs to.
+    range: Taxonomy
+    inlined: false
+  target_taxonomy:
+    description: The taxonomy that the target cluster belongs to.
+    range: Taxonomy
+    inlined: false
   notes:
     description: Free-text notes about this mapping entry.

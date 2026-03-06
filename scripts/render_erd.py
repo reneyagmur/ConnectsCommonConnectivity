@@ -31,7 +31,7 @@ SCHEMA_GROUPS = {
     "core": {"DataSet", "DataItem", "DataItemDataSetAssociation", "SpatialLocation"},
     "zarr": {"ZarrArray", "ZarrDataset", "ParquetDataset"},
     "brain_region": {"BrainRegion", "BrainRegionAssociation"},
-    "clustering": {"AlgorithmRun", "ClusterHierarchy", "Cluster", "ClusterMembership", "HierachyCategory"},
+    "clustering": {"AlgorithmRun", "Taxonomy", "Cluster", "ClusterMembership", "HierachyCategory"},
     "projection": {"ProjectionMeasurementMatrix"},
     "cell_cell": {"CellCellConnectivityLong", "CellCellMeasurementMatrix"},
     "cell_gene": {"CellGeneData", "BarcodingExperimentMetadata", "GeneMetadata", "CellMetadata"},

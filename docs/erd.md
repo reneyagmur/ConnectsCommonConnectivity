@@ -18,7 +18,7 @@ Reading example: `A ||--}o B : "items"` means *each A has zero-or-more B* via th
 | ![core](https://via.placeholder.com/16/4472C4/4472C4.png) **Core (DataSet, DataItem, ...)** | `core` | `DataItem`, `DataItemDataSetAssociation`, `DataSet`, `SpatialLocation` |
 | ![zarr](https://via.placeholder.com/16/548235/548235.png) **Storage (Zarr, Parquet)** | `zarr` | `ParquetDataset`, `ZarrArray`, `ZarrDataset` |
 | ![brain_region](https://via.placeholder.com/16/BF8F00/BF8F00.png) **Brain Region** | `brain_region` | `BrainRegion`, `BrainRegionAssociation` |
-| ![clustering](https://via.placeholder.com/16/7030A0/7030A0.png) **Clustering** | `clustering` | `AlgorithmRun`, `Cluster`, `ClusterHierarchy`, `ClusterMembership`, `HierachyCategory` |
+| ![clustering](https://via.placeholder.com/16/7030A0/7030A0.png) **Clustering** | `clustering` | `AlgorithmRun`, `Cluster`, `ClusterMembership`, `HierachyCategory`, `Taxonomy` |
 | ![projection](https://via.placeholder.com/16/C55A11/C55A11.png) **Projection** | `projection` | `ProjectionMeasurementMatrix` |
 | ![cell_cell](https://via.placeholder.com/16/C00000/C00000.png) **Cell-Cell Connectivity** | `cell_cell` | `CellCellConnectivityLong`, `CellCellMeasurementMatrix` |
 | ![cell_gene](https://via.placeholder.com/16/0070C0/0070C0.png) **Cell-Gene Expression** | `cell_gene` | `BarcodingExperimentMetadata`, `CellGeneData`, `CellMetadata`, `GeneMetadata` |
@@ -38,7 +38,6 @@ erDiagram
         string json_object
         datetime run_timestamp
         DataSet input_dataset FK
-        ClusterHierarchy produced_hierarchies FK
         string score_description
         string distance_description
     }
@@ -162,6 +161,7 @@ erDiagram
         MappingSet mapping_set FK
         DataItem source_cell FK
         Cluster target_cluster FK
+        Taxonomy target_taxonomy FK
         float score
         float probability
         string notes
@@ -177,14 +177,8 @@ erDiagram
         string hex_color
         HierachyCategory heirachy_category FK
         float distance_to_parent
+        Taxonomy taxonomy FK
         string project_id
-    }
-
-    ClusterHierarchy {
-        string id PK
-        AlgorithmRun run FK
-        Cluster root FK
-        Cluster clusters FK
     }
 
     ClusterMembership {
@@ -193,6 +187,7 @@ erDiagram
         float membership_score
         float probability
         float distance
+        Taxonomy taxonomy FK
         string project_id
     }
 
@@ -201,6 +196,8 @@ erDiagram
         MappingSet mapping_set FK
         Cluster source_cluster FK
         Cluster target_cluster FK
+        Taxonomy source_taxonomy FK
+        Taxonomy target_taxonomy FK
         float score
         float probability
         string notes
@@ -282,6 +279,17 @@ erDiagram
         string reference_space
     }
 
+    Taxonomy {
+        string id PK
+        string name
+        string description
+        string publication
+        string version
+        Cluster root FK
+        Cluster clusters FK
+        string project_id
+    }
+
     ZarrArray {
         string id PK
         string path
@@ -293,7 +301,6 @@ erDiagram
     }
 
     AlgorithmRun |o--|| DataSet : "input_dataset"
-    AlgorithmRun |o--}o ClusterHierarchy : "produced_hierarchies"
     BrainRegion |o--|| BrainRegion : "parent_identifier"
     BrainRegion |o--}o BrainRegion : "child_identifiers"
     BrainRegion |o--}o BrainRegion : "descendants"
@@ -321,17 +328,19 @@ erDiagram
     CellToClusterMapping ||--|| MappingSet : "mapping_set"
     CellToClusterMapping ||--|| DataItem : "source_cell"
     CellToClusterMapping ||--|| Cluster : "target_cluster"
+    CellToClusterMapping |o--|| Taxonomy : "target_taxonomy"
     Cluster |o--|| Cluster : "parent"
     Cluster |o--}o Cluster : "children"
     Cluster |o--|| HierachyCategory : "heirachy_category"
-    ClusterHierarchy |o--|| AlgorithmRun : "run"
-    ClusterHierarchy |o--|| Cluster : "root"
-    ClusterHierarchy |o--}o Cluster : "clusters"
+    Cluster |o--|| Taxonomy : "taxonomy"
     ClusterMembership |o--|| DataItem : "item"
     ClusterMembership |o--|| Cluster : "cluster"
+    ClusterMembership |o--|| Taxonomy : "taxonomy"
     ClusterToClusterMapping ||--|| MappingSet : "mapping_set"
     ClusterToClusterMapping ||--|| Cluster : "source_cluster"
     ClusterToClusterMapping ||--|| Cluster : "target_cluster"
+    ClusterToClusterMapping |o--|| Taxonomy : "source_taxonomy"
+    ClusterToClusterMapping |o--|| Taxonomy : "target_taxonomy"
     DataItemDataSetAssociation ||--|| DataItem : "dataitem_id"
     DataItemDataSetAssociation ||--|| DataSet : "dataset_id"
     MappingSet ||--|| DataSet : "source_dataset"
@@ -341,4 +350,6 @@ erDiagram
     ProjectionMeasurementMatrix |o--|| ZarrArray : "values"
     SingleCellReconstruction ||--|| DataItem : "id"
     SingleCellReconstruction |o--|| SpatialLocation : "soma_location"
+    Taxonomy |o--|| Cluster : "root"
+    Taxonomy |o--}o Cluster : "clusters"
 ```
