@@ -44,11 +44,30 @@ GROUP_COLORS = {
 }
 
 
+GROUP_ORDER = [
+    "core", "zarr", "brain_region", "clustering",
+    "projection", "cell_cell", "cell_gene",
+    "cell_features", "single_cell", "mappings",
+]
+
+
 def get_group(class_name: str) -> str:
     for group, members in SCHEMA_GROUPS.items():
         if class_name in members:
             return group
     return "core"
+
+
+def get_entity_order(classes: dict[str, dict]) -> list[str]:
+    """Return class names in diagram order (must match build_erd for CSS indices)."""
+    def sort_key(name: str) -> tuple[int, str]:
+        g = get_group(name)
+        try:
+            group_idx = GROUP_ORDER.index(g)
+        except ValueError:
+            group_idx = 999
+        return (group_idx, name)
+    return sorted(classes.keys(), key=sort_key)
 
 
 def load_all_schemas(schema_dir: pathlib.Path) -> list[dict]:
@@ -110,7 +129,10 @@ def build_erd(schemas: list[dict]) -> str:
     relationships: list[str] = []
     entity_blocks: list[str] = []
 
-    for cls_name, cls_defn in sorted(classes.items()):
+    ordered_names = get_entity_order(classes)
+
+    for cls_name in ordered_names:
+        cls_defn = classes[cls_name]
         slot_names = list(cls_defn.get("slots", []))
 
         for mixin in cls_defn.get("mixins", []):
@@ -167,9 +189,10 @@ def build_css(classes: dict[str, dict]) -> str:
     Mermaid erDiagram renders each entity as an SVG <g> with
     id="entity-{Name}-{index}".  The first child <g> contains two <path>
     elements: body-fill (1st) and border-stroke (2nd).
+    Index must match the entity order in the diagram (get_entity_order).
     """
-    sorted_names = sorted(classes.keys())
-    name_to_idx = {name: idx for idx, name in enumerate(sorted_names)}
+    ordered_names = get_entity_order(classes)
+    name_to_idx = {name: idx for idx, name in enumerate(ordered_names)}
 
     css_rules: list[str] = []
     for name, idx in name_to_idx.items():
@@ -218,6 +241,12 @@ def build_color_legend() -> str:
 
 
 def main() -> None:
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate ERD from LinkML schemas")
+    parser.add_argument("-o", "--output", default="erd", help="Output base name (default: erd). Writes {name}.md, {name}.mmd")
+    args = parser.parse_args()
+    base = args.output
+
     schemas = load_all_schemas(SCHEMA_DIR)
     classes = collect_classes(schemas)
     mermaid_src = build_erd(schemas)
@@ -232,11 +261,11 @@ def main() -> None:
     )
 
     DOCS_DIR.mkdir(parents=True, exist_ok=True)
-    (DOCS_DIR / "erd.md").write_text(md_content)
-    print(f"ERD written to {DOCS_DIR / 'erd.md'}")
+    (DOCS_DIR / f"{base}.md").write_text(md_content)
+    print(f"ERD written to {DOCS_DIR / f'{base}.md'}")
 
-    (DOCS_DIR / "erd.mmd").write_text(mermaid_src)
-    print(f"Mermaid source written to {DOCS_DIR / 'erd.mmd'}")
+    (DOCS_DIR / f"{base}.mmd").write_text(mermaid_src)
+    print(f"Mermaid source written to {DOCS_DIR / f'{base}.mmd'}")
 
     config = build_mermaid_config(classes)
     config_path = DOCS_DIR / "mermaid-config.json"

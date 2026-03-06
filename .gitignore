@@ -213,10 +213,8 @@ datalake/
 results/
 figures/
 
-# Node / npm (mermaid-cli is installed globally or via npx, not vendored)
+# Node / npm (run `npm install` to create node_modules for mermaid-cli)
 node_modules/
-package.json
-package-lock.json
 
 # Rendered ERD images (regenerate from .mmd/.py sources; erd.md renders on GitHub automatically)
 docs/*.png

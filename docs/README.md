@@ -33,31 +33,32 @@ MPLCONFIGDIR=/tmp/mpl_config .venv/bin/python scripts/render_erd.py
 
 **3. Regenerate mermaid-cli PNG/SVG** (`erd_mermaid.png`, `erd_mermaid.svg`):
 
-Requires Node.js and `@mermaid-js/mermaid-cli` installed globally:
+Run `npm install` from the repo root once (creates `node_modules/`; `.npmrc` skips Puppeteer Chrome download, uses system Chrome). Then:
 
 ```bash
-brew install node                          # if not already installed
-npm install -g @mermaid-js/mermaid-cli     # one-time global install
+./node_modules/.bin/mmdc -i docs/erd.mmd -o docs/erd_mermaid.png -t default -b white -w 6000 -H 4000 -s 3 -c docs/mermaid-config.json
+./node_modules/.bin/mmdc -i docs/erd.mmd -o docs/erd_mermaid.svg -t default -b white -w 6000 -H 4000 -s 3 -c docs/mermaid-config.json
 ```
 
-Then render:
-
-```bash
-mmdc -i docs/erd.mmd -o docs/erd_mermaid.png -t default -b white -w 6000 -H 4000 -s 3 -c docs/mermaid-config.json
-mmdc -i docs/erd.mmd -o docs/erd_mermaid.svg -t default -b white -w 6000 -H 4000 -s 3 -c docs/mermaid-config.json
-```
-
-The `-c docs/mermaid-config.json` flag applies per-entity CSS that color-codes each table by its schema module.
+Or use a global install (`npm install -g @mermaid-js/mermaid-cli`) and run `mmdc` directly.
 
 **4. Regenerate slide ERD** (`erd_slide.png`, `erd_slide.mmd`):
 
 ```bash
 MPLCONFIGDIR=/tmp/mpl_config .venv/bin/python scripts/render_erd_slide.py
-mmdc -i docs/erd_slide.mmd -o docs/erd_slide_mermaid.png -t default -b white -w 2400 -H 1350 -s 2 -c docs/erd_slide_config.json
-mmdc -i docs/erd_slide.mmd -o docs/erd_slide_mermaid.svg -t default -b white -w 2400 -H 1350 -s 2 -c docs/erd_slide_config.json
+./node_modules/.bin/mmdc -i docs/erd_slide.mmd -o docs/erd_slide_mermaid.png -t default -b white -w 2400 -H 1350 -s 2 -c docs/erd_slide_config.json
+./node_modules/.bin/mmdc -i docs/erd_slide.mmd -o docs/erd_slide_mermaid.svg -t default -b white -w 2400 -H 1350 -s 2 -c docs/erd_slide_config.json
+```
+
+**5. Regenerate erd_updated** (after schema changes, full pipeline from scratch):
+
+```bash
+.venv/bin/python scripts/generate_erd.py -o erd_updated
+MPLCONFIGDIR=/tmp/mpl_config .venv/bin/python scripts/render_erd.py -o erd_updated.png
+./scripts/render_erd_updated_mermaid.sh
 ```
 
 ### Dependencies
 
 - **Python** (`.venv`): `pyyaml`, `matplotlib` -- already in the virtual environment.
-- **Node.js** (optional, for mermaid-cli renders): `brew install node` + `npm install -g @mermaid-js/mermaid-cli`. Not vendored in this repo.
+- **Node.js** (for mermaid-cli): `brew install node` + `npm install` from repo root. `package.json` is committed; `node_modules/` is gitignored.

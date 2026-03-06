@@ -1,0 +1,7 @@
+{
+  "name": "connects-common-connectivity",
+  "private": true,
+  "devDependencies": {
+    "@mermaid-js/mermaid-cli": "^11.0.0"
+  }
+}

@@ -1,3 +1,34 @@
+# Connectivity Schema - Entity Relationship Diagram
+
+## Relationship Notation (Crow's Foot)
+
+| Symbol | Meaning |
+|--------|---------|
+| `\|\|` | Exactly one (mandatory) |
+| `\|o` | Zero or one (optional) |
+| `}o` | Zero or more |
+| `}\|` | One or more |
+
+Reading example: `A ||--}o B : "items"` means *each A has zero-or-more B* via the `items` field, and *each B belongs to exactly one A*.
+
+## Schema Module Colors
+
+| Color | Schema Module | Entities |
+|-------|---------------|----------|
+| ![core](https://via.placeholder.com/16/4472C4/4472C4.png) **Core (DataSet, DataItem, ...)** | `core` | `DataItem`, `DataItemDataSetAssociation`, `DataSet`, `SpatialLocation` |
+| ![zarr](https://via.placeholder.com/16/548235/548235.png) **Storage (Zarr, Parquet)** | `zarr` | `ParquetDataset`, `ZarrArray`, `ZarrDataset` |
+| ![brain_region](https://via.placeholder.com/16/BF8F00/BF8F00.png) **Brain Region** | `brain_region` | `BrainRegion`, `BrainRegionAssociation` |
+| ![clustering](https://via.placeholder.com/16/7030A0/7030A0.png) **Clustering** | `clustering` | `AlgorithmRun`, `Cluster`, `ClusterMembership`, `HierachyCategory`, `Taxonomy` |
+| ![projection](https://via.placeholder.com/16/C55A11/C55A11.png) **Projection** | `projection` | `ProjectionMeasurementMatrix` |
+| ![cell_cell](https://via.placeholder.com/16/C00000/C00000.png) **Cell-Cell Connectivity** | `cell_cell` | `CellCellConnectivityLong`, `CellCellMeasurementMatrix` |
+| ![cell_gene](https://via.placeholder.com/16/0070C0/0070C0.png) **Cell-Gene Expression** | `cell_gene` | `BarcodingExperimentMetadata`, `CellGeneData`, `CellMetadata`, `GeneMetadata` |
+| ![cell_features](https://via.placeholder.com/16/00B050/00B050.png) **Cell Features** | `cell_features` | `CellFeatureDefinition`, `CellFeatureMatrix`, `CellFeatureMeasurement`, `CellFeatureSet` |
+| ![single_cell](https://via.placeholder.com/16/606060/606060.png) **Single Cell** | `single_cell` | `SingleCellReconstruction` |
+| ![mappings](https://via.placeholder.com/16/9C5700/9C5700.png) **Mappings** | `mappings` | `CellToCellMapping`, `CellToClusterMapping`, `ClusterToClusterMapping`, `MappingSet` |
+
+## Diagram
+
+```mermaid
 erDiagram
 
     DataItem {
@@ -321,3 +352,4 @@ erDiagram
     ClusterToClusterMapping |o--|| Taxonomy : "target_taxonomy"
     MappingSet ||--|| DataSet : "source_dataset"
     MappingSet ||--|| DataSet : "target_dataset"
+```
