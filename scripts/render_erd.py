@@ -7,6 +7,7 @@ with colored entity boxes, PK/FK annotations, and relationship lines.
 
 from __future__ import annotations
 
+import argparse
 import math
 import pathlib
 from dataclasses import dataclass, field
@@ -457,9 +458,20 @@ def render_erd(entities: list[EntityInfo], relationships: list[RelationshipInfo]
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Render the connectivity ERD as a PNG")
+    parser.add_argument(
+        "-o", "--output",
+        default=None,
+        help="Output filename (e.g. erd_updated.png). Default: erd.png",
+    )
+    args = parser.parse_args()
+
+    docs_dir = pathlib.Path(__file__).resolve().parent.parent / "docs"
+    output_path = docs_dir / args.output if args.output else OUTPUT_FILE
+
     schemas = load_all_schemas(SCHEMA_DIR)
     entities, relationships = build_entities_and_relationships(schemas)
-    render_erd(entities, relationships, OUTPUT_FILE)
+    render_erd(entities, relationships, output_path)
 
 
 if __name__ == "__main__":
