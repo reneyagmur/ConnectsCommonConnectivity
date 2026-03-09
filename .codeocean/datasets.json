@@ -18,6 +18,10 @@
 			"mount": "visp_deltalakes"
 		},
 		{
+			"id": "96204f9f-a54e-4a0a-8bc7-d5199f905868",
+			"mount": "minniephase3-emily_skeleton_keys_features"
+		},
+		{
 			"id": "aff09b9b-5cdc-49ef-8e39-358a8ead98d8",
 			"mount": "visp-patchseq-taxonomy-info"
 		}
