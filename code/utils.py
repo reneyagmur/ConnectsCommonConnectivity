@@ -8,6 +8,29 @@ from matplotlib.patches import Arc, FancyArrowPatch
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.sparse import csr_array
 from scipy.stats import rankdata
+from itertools import zip_longest
+
+def get_list_differences(list_a, list_b, buf=30, return_lists=False, print_lists=True):
+    """
+    Returns items unique to list_a and items unique to list_b.
+    """
+    set_a = set(list_a)
+    set_b = set(list_b)
+    
+    only_in_a = list(set_a - set_b)
+    only_in_b = list(set_b - set_a)
+    
+    if print_lists:
+        print(f"{'ONLY IN A':<{buf}} | {'ONLY IN B':<{buf}}")
+        print("-" * (2*buf))
+        
+        for a, b in zip_longest(only_in_a, only_in_b, fillvalue=""):
+            print(f"{a:<{buf}} | {b:<{buf}}")
+
+        print('\n')
+
+    if return_lists:
+        return only_in_a, only_in_b
 
 
 def clear_axis(axis):
