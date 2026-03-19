@@ -139,6 +139,7 @@ class UMAPLabelTransfer:
         self.umap_mode: str | None = None
         self._ps_labels: np.ndarray | None = None
         self._mn_predicted: np.ndarray | None = None
+        self._cluster_colors: dict[str, str] | None = None
 
     # ------------------------------------------------------------------
     # Phase 1 — Data loading
@@ -175,6 +176,17 @@ class UMAPLabelTransfer:
         df_clusters_met = df_clusters.filter(
             pl.col("project_id") == "visp_met_types"
         )
+
+        # Extract hex_color map: {cluster_id -> hex_color} for all MET-type clusters
+        if "hex_color" in df_clusters_met.columns:
+            self._cluster_colors = dict(
+                zip(
+                    df_clusters_met["id"].to_list(),
+                    df_clusters_met["hex_color"].to_list(),
+                )
+            )
+        else:
+            self._cluster_colors = {}
 
         # Per patchseq cell: keep deepest (most specific) cluster label
         df_ps_labels = (
@@ -616,11 +628,18 @@ class UMAPLabelTransfer:
         mn_emb = self._mn_emb
 
         all_labels = sorted(set(ps_labels) | set(mn_predicted))
+
+        # Build color map: prefer hex_color from the cluster taxonomy table;
+        # fall back to tab20 for any label not present there.
+        known_colors = self._cluster_colors or {}
         cmap20 = plt.get_cmap("tab20")
-        cluster_colors = {
-            lbl: cmap20(i / max(len(all_labels) - 1, 1))
-            for i, lbl in enumerate(all_labels)
+        fallback_labels = [lbl for lbl in all_labels if lbl not in known_colors]
+        fallback_colors = {
+            lbl: cmap20(i / max(len(fallback_labels) - 1, 1))
+            for i, lbl in enumerate(fallback_labels)
         }
+        cluster_colors = {**fallback_colors, **{lbl: known_colors[lbl] for lbl in all_labels if lbl in known_colors}}
+
         DS_COLORS = {"patchseq": "#1f77b4", "minnie65": "#ff7f0e"}
 
         fig, axes = plt.subplots(1, 3, figsize=(18, 6))
