@@ -24,6 +24,10 @@
 		{
 			"id": "aff09b9b-5cdc-49ef-8e39-358a8ead98d8",
 			"mount": "visp-patchseq-taxonomy-info"
+		},
+		{
+			"id": "bfaa80cb-626b-446a-8ecb-10d2120a9fd3",
+			"mount": "MMC-exc_minnie-from-exc_patchseq-v1"
 		}
 	]
 }
