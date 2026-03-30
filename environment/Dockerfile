@@ -3,8 +3,6 @@ ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG GIT_ASKPASS
-COPY git-askpass /
 
 RUN conda install -y \
         jupyterlab==4.4.10 \
@@ -27,6 +25,13 @@ RUN pip install -U --no-cache-dir \
     seaborn==0.13.2 \
     standard-transform==1.4.1 \
     umap-learn==0.5.9.post2
+
+# Install Node.js (needed for copilot CLI)
+RUN conda install -y nodejs -c conda-forge \
+    && conda clean -ya
+
+# Install GitHub Copilot CLI globally (no auth needed for install)
+RUN npm install -g @github/copilot
 
 COPY postInstall /
 RUN --mount=type=secret,id=secrets . /run/secrets/secrets \
