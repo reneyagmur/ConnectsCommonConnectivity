@@ -20,7 +20,8 @@ Usage (step-by-step with optional h5ad save):
     lt = UMAPLabelTransfer(DATA_ROOT, cell_type='inh')
     lt.load_data()
     lt.harmonize_features()
-    lt.save_harmonized_h5ad('/path/to/output')   # optional, before scaling
+    lt.save_harmonized_h5ad('/path/to/output')            # optional, both datasets
+    lt.save_harmonized_h5ad_single('minnie', '/out/mn.h5ad')  # optional, one dataset
     lt.scale(method='robust')
     lt.plot_alignment_diagnostics()
     lt.fit_umap(mode='supervised')
@@ -156,12 +157,17 @@ class UMAPLabelTransfer:
         self._df_ps_feat = df
         return self
 
-    def load_patchseq_labels(self) -> "UMAPLabelTransfer":
+    def load_patchseq_labels(self, deepest_only: bool = True) -> "UMAPLabelTransfer":
         """Load cluster labels and join them onto patchseq features.
 
-        Strategy: load ``clustermembership`` + ``cluster`` tables, keep the
-        deepest (highest ``level``) label per cell, then inner-join onto
-        ``self._df_ps_feat``.
+        Parameters
+        ----------
+        deepest_only:
+            If ``True`` (default), collapse to one row per cell by keeping only
+            the deepest (highest ``level``) cluster label — the current behaviour.
+            If ``False``, retain **all** cluster-hierarchy memberships; each cell
+            will appear once per level it belongs to in the taxonomy, preserving
+            the full cluster hierarchy in ``self._df_ps``.
         """
         if self._df_ps_feat is None:
             raise RuntimeError("Call load_patchseq_features() first.")
@@ -188,8 +194,8 @@ class UMAPLabelTransfer:
         else:
             self._cluster_colors = {}
 
-        # Per patchseq cell: keep deepest (most specific) cluster label
-        df_ps_labels = (
+        # Per patchseq cell: optionally keep only the deepest (most specific) label
+        df_ps_labels_joined = (
             df_ps_labels_raw.select(["item", "cluster"])
             .join(
                 df_clusters_met.select(["id", "level", "heirachy_category"]),
@@ -198,14 +204,25 @@ class UMAPLabelTransfer:
                 how="left",
             )
             .sort("level", descending=True, nulls_last=True)
-            .group_by("item")
-            .first()
-            .select(["item", "cluster", "level", "heirachy_category"])
         )
 
+        if deepest_only:
+            df_ps_labels = (
+                df_ps_labels_joined
+                .group_by("item")
+                .first()
+                .select(["item", "cluster", "level", "heirachy_category"])
+            )
+        else:
+            df_ps_labels = df_ps_labels_joined.select(
+                ["item", "cluster", "level", "heirachy_category"]
+            )
+
+        mode_str = "deepest label only" if deepest_only else "full cluster hierarchy"
         print(
             f"Unique patchseq cells: {df_ps_labels['item'].n_unique()}, "
-            f"unique labels: {df_ps_labels['cluster'].n_unique()}"
+            f"unique labels: {df_ps_labels['cluster'].n_unique()} "
+            f"({mode_str})"
         )
 
         # Join onto features
@@ -227,10 +244,17 @@ class UMAPLabelTransfer:
         self._df_mn = df
         return self
 
-    def load_data(self) -> "UMAPLabelTransfer":
-        """Convenience wrapper: load patchseq features + labels + minnie features."""
+    def load_data(self, deepest_only: bool = True) -> "UMAPLabelTransfer":
+        """Convenience wrapper: load patchseq features + labels + minnie features.
+
+        Parameters
+        ----------
+        deepest_only:
+            Passed through to :meth:`load_patchseq_labels`.  See that method for
+            details.
+        """
         self.load_patchseq_features()
-        self.load_patchseq_labels()
+        self.load_patchseq_labels(deepest_only=deepest_only)
         self.load_minnie_features()
         return self
 
@@ -288,46 +312,72 @@ class UMAPLabelTransfer:
           - ``{cell_type}_minnie_harmonized.h5ad``
 
         Call this *after* ``harmonize_features()`` and *before* ``scale()``.
+        See :meth:`save_harmonized_h5ad_single` to save only one dataset to a
+        custom path.
+        """
+        os.makedirs(output_dir, exist_ok=True)
+        ps_path = os.path.join(output_dir, f"{self.cell_type}_patchseq_harmonized.h5ad")
+        mn_path = os.path.join(output_dir, f"{self.cell_type}_minnie_harmonized.h5ad")
+        self.save_harmonized_h5ad_single("patchseq", ps_path)
+        self.save_harmonized_h5ad_single("minnie", mn_path)
+        return self
+
+    def save_harmonized_h5ad_single(
+        self,
+        dataset: Literal["patchseq", "minnie"],
+        path: str,
+    ) -> "UMAPLabelTransfer":
+        """Save a single harmonised dataset to h5ad at a specified path.
+
+        Parameters
+        ----------
+        dataset:
+            Which dataset to save: ``'patchseq'`` or ``'minnie'``.
+        path:
+            Full file path (including filename) for the output ``.h5ad`` file.
+            The ``.h5ad`` extension should be included (e.g. ``'/out/cells.h5ad'``);
+            anndata will not append it automatically.
+            Parent directories are created automatically.
+
+        Call this *after* ``harmonize_features()`` and *before* ``scale()``.
         """
         try:
             import anndata as ad
         except ImportError as exc:
             raise ImportError(
-                "anndata is required for save_harmonized_h5ad. "
+                "anndata is required for save_harmonized_h5ad_single. "
                 "Install it with: pip install anndata"
             ) from exc
 
         if self._df_ps_pd is None or self._df_mn_pd is None:
             raise RuntimeError("Call harmonize_features() first.")
 
-        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         feats = self._shared_features
 
-        # Patchseq: obs columns = id (index) + cluster
-        ps_obs = self._df_ps_pd[["cluster"]].copy()
-        # Use the DataFrame index as the obs_names; if 'id' is present use it
-        if "id" in self._df_ps_pd.columns:
-            ps_obs.index = self._df_ps_pd["id"].astype(str)
-        adata_ps = ad.AnnData(
-            X=self._df_ps_pd[feats].values.astype(np.float32),
-            obs=ps_obs,
-            var=pd.DataFrame(index=feats),
-        )
-        ps_path = os.path.join(output_dir, f"{self.cell_type}_patchseq_harmonized.h5ad")
-        adata_ps.write_h5ad(ps_path)
-        print(f"Saved patchseq h5ad → {ps_path}  {adata_ps.shape}")
+        if dataset == "patchseq":
+            ps_obs = self._df_ps_pd[["cluster"]].copy()
+            if "id" in self._df_ps_pd.columns:
+                ps_obs.index = self._df_ps_pd["id"].astype(str)
+            adata = ad.AnnData(
+                X=self._df_ps_pd[feats].values.astype(np.float32),
+                obs=ps_obs,
+                var=pd.DataFrame(index=feats),
+            )
+            label = "patchseq"
+        elif dataset == "minnie":
+            mn_obs = pd.DataFrame(index=self._df_mn_pd["id"].astype(str))
+            adata = ad.AnnData(
+                X=self._df_mn_pd[feats].values.astype(np.float32),
+                obs=mn_obs,
+                var=pd.DataFrame(index=feats),
+            )
+            label = "minnie"
+        else:
+            raise ValueError(f"dataset must be 'patchseq' or 'minnie', got {dataset!r}")
 
-        # Minnie: obs column = id
-        mn_obs = pd.DataFrame(index=self._df_mn_pd["id"].astype(str))
-        adata_mn = ad.AnnData(
-            X=self._df_mn_pd[feats].values.astype(np.float32),
-            obs=mn_obs,
-            var=pd.DataFrame(index=feats),
-        )
-        mn_path = os.path.join(output_dir, f"{self.cell_type}_minnie_harmonized.h5ad")
-        adata_mn.write_h5ad(mn_path)
-        print(f"Saved minnie h5ad  → {mn_path}  {adata_mn.shape}")
-
+        adata.write_h5ad(path)
+        print(f"Saved {label} h5ad → {path}  {adata.shape}")
         return self
 
     # ------------------------------------------------------------------
