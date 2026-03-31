@@ -6,6 +6,10 @@
 			"mount": "visp-features-and-mapping"
 		},
 		{
+			"id": "59c00920-5587-425c-9fbe-4413d5ac6731",
+			"mount": "MMC-minnie-from-patchseq-v2"
+		},
+		{
 			"id": "709549ed-cd74-43b7-8a49-ef47299569e6",
 			"mount": "minnie1412"
 		},
