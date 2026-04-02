@@ -27,6 +27,21 @@ Usage (step-by-step with optional h5ad save):
     lt.fit_umap(mode='supervised')
     lt.transfer_labels(k=3)
     lt.plot_umap()
+
+KNN label-transfer scores:
+    After transfer_labels(), the knn_stats property returns a flat DataFrame
+    with one row per minnie cell:
+
+        lt.knn_stats.columns
+        # id, predicted_label, predicted_probability, predicted_avg_distance,
+        # runner_up_1_label, runner_up_1_probability, runner_up_1_avg_distance,
+        # runner_up_2_label, runner_up_2_probability, runner_up_2_avg_distance
+
+    Probabilities are vote_count / k.  Runner-up columns are NaN when fewer
+    than two (or three) distinct labels exist among the k neighbours.
+
+    Save to h5ad:
+        lt.save_knn_labels_h5ad('/scratch/h5ad_outputs/exc_minnie_knn_labels.h5ad')
 """
 
 from __future__ import annotations
@@ -140,6 +155,7 @@ class UMAPLabelTransfer:
         self.umap_mode: str | None = None
         self._ps_labels: np.ndarray | None = None
         self._mn_predicted: np.ndarray | None = None
+        self._mn_knn_stats: pd.DataFrame | None = None
         self._cluster_colors: dict[str, str] | None = None
 
     # ------------------------------------------------------------------
@@ -378,6 +394,39 @@ class UMAPLabelTransfer:
 
         adata.write_h5ad(path)
         print(f"Saved {label} h5ad → {path}  {adata.shape}")
+        return self
+
+    def save_knn_labels_h5ad(self, path: str) -> "UMAPLabelTransfer":
+        """Save KNN label-transfer results to an h5ad file.
+
+        The :attr:`knn_stats` DataFrame is stored as ``adata.obs`` with minnie
+        cell IDs as the index.  Call this *after* :meth:`transfer_labels`.
+
+        Parameters
+        ----------
+        path:
+            Full file path for the output ``.h5ad`` file (e.g.
+            ``'/scratch/h5ad_outputs/exc_minnie_knn_labels.h5ad'``).
+            Parent directories are created automatically.
+        """
+        try:
+            import anndata as ad
+        except ImportError as exc:
+            raise ImportError(
+                "anndata is required for save_knn_labels_h5ad. "
+                "Install it with: pip install anndata"
+            ) from exc
+
+        if self._mn_knn_stats is None:
+            raise RuntimeError("Call transfer_labels() first.")
+
+        obs = self._mn_knn_stats.copy().set_index("id")
+        obs.index = obs.index.astype(str)
+
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        adata = ad.AnnData(obs=obs)
+        adata.write_h5ad(path)
+        print(f"Saved knn_stats h5ad → {path}  ({len(obs)} cells)")
         return self
 
     # ------------------------------------------------------------------
@@ -630,6 +679,11 @@ class UMAPLabelTransfer:
     def transfer_labels(self, k: int = 3) -> "UMAPLabelTransfer":
         """Majority-vote KNN label transfer from patchseq to minnie.
 
+        Computes per-label vote counts and mean UMAP distances for each minnie
+        cell.  Results are stored as a flat DataFrame in :attr:`knn_stats` with
+        the predicted label plus up to two runner-up labels, each with their own
+        probability (vote_count / k) and average distance columns.
+
         Parameters
         ----------
         k:
@@ -639,15 +693,54 @@ class UMAPLabelTransfer:
             raise RuntimeError("Call fit_umap() first.")
 
         ps_labels = self._df_ps_pd["cluster"].values
+        mn_ids = self._df_mn_pd["id"].astype(str).values
 
         knn = NearestNeighbors(n_neighbors=k)
         knn.fit(self._ps_emb)
-        _, indices = knn.kneighbors(self._mn_emb)
+        distances, indices = knn.kneighbors(self._mn_emb)
 
         neighbor_labels = ps_labels[indices]  # (n_minnie, k)
-        mn_predicted = np.array(
-            [Counter(row).most_common(1)[0][0] for row in neighbor_labels]
-        )
+
+        rows = []
+        for i, (nbr_labels, nbr_dists) in enumerate(zip(neighbor_labels, distances)):
+            # Aggregate per-label: count votes and accumulate distances
+            label_stats: dict[str, list] = {}
+            for lbl, dist in zip(nbr_labels, nbr_dists):
+                if lbl not in label_stats:
+                    label_stats[lbl] = []
+                label_stats[lbl].append(dist)
+
+            # Rank: most votes first; ties broken by mean distance (ascending)
+            ranked = sorted(
+                label_stats.items(),
+                key=lambda x: (-len(x[1]), np.mean(x[1])),
+            )
+
+            def _entry(rank_idx):
+                if rank_idx < len(ranked):
+                    lbl, dists = ranked[rank_idx]
+                    return lbl, len(dists) / k, float(np.mean(dists))
+                return None, None, None
+
+            pred_lbl, pred_prob, pred_dist = _entry(0)
+            ru1_lbl, ru1_prob, ru1_dist = _entry(1)
+            ru2_lbl, ru2_prob, ru2_dist = _entry(2)
+
+            rows.append({
+                "id": mn_ids[i],
+                "predicted_label": pred_lbl,
+                "predicted_probability": pred_prob,
+                "predicted_avg_distance": pred_dist,
+                "runner_up_1_label": ru1_lbl,
+                "runner_up_1_probability": ru1_prob,
+                "runner_up_1_avg_distance": ru1_dist,
+                "runner_up_2_label": ru2_lbl,
+                "runner_up_2_probability": ru2_prob,
+                "runner_up_2_avg_distance": ru2_dist,
+            })
+
+        knn_stats = pd.DataFrame(rows)
+        mn_predicted = knn_stats["predicted_label"].values
 
         print("Minnie predicted label counts:")
         unique, counts = np.unique(mn_predicted, return_counts=True)
@@ -656,7 +749,27 @@ class UMAPLabelTransfer:
 
         self._ps_labels = ps_labels
         self._mn_predicted = mn_predicted
+        self._mn_knn_stats = knn_stats
         return self
+
+    @property
+    def knn_stats(self) -> pd.DataFrame:
+        """DataFrame of KNN label transfer results for minnie cells.
+
+        Available after :meth:`transfer_labels` has been called.  One row per
+        minnie cell with columns:
+
+        - ``id`` — minnie cell ID
+        - ``predicted_label``, ``predicted_probability``, ``predicted_avg_distance``
+        - ``runner_up_1_label``, ``runner_up_1_probability``, ``runner_up_1_avg_distance``
+        - ``runner_up_2_label``, ``runner_up_2_probability``, ``runner_up_2_avg_distance``
+
+        Probabilities are vote_count / k.  Runner-up columns are NaN when fewer
+        than two (or three) distinct labels exist among the k neighbours.
+        """
+        if self._mn_knn_stats is None:
+            raise RuntimeError("Call transfer_labels() first.")
+        return self._mn_knn_stats
 
     # ------------------------------------------------------------------
     # Phase 6 — Visualisation
