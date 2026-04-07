@@ -399,8 +399,9 @@ class UMAPLabelTransfer:
     def save_knn_labels_h5ad(self, path: str) -> "UMAPLabelTransfer":
         """Save KNN label-transfer results to an h5ad file.
 
-        The :attr:`knn_stats` DataFrame is stored as ``adata.obs`` with minnie
-        cell IDs as the index.  Call this *after* :meth:`transfer_labels`.
+        The :attr:`knn_stats` DataFrame is stored as ``adata.obs`` with a
+        plain integer index.  The minnie cell ID is kept as the ``id`` column,
+        accessible via ``adata.obs["id"]`` after reading back.
 
         Parameters
         ----------
@@ -420,7 +421,8 @@ class UMAPLabelTransfer:
         if self._mn_knn_stats is None:
             raise RuntimeError("Call transfer_labels() first.")
 
-        obs = self._mn_knn_stats.copy().set_index("id")
+        obs = self._mn_knn_stats.copy()
+        obs["id"] = obs["id"].astype(str)
         obs.index = obs.index.astype(str)
 
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
