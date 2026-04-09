@@ -1019,3 +1019,4 @@ def filter_synapse_table(
         post_mask = np.ones(len(synapse_table), dtype=bool)
 
     return synapse_table[pre_mask & post_mask]
+
