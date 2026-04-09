@@ -7,7 +7,7 @@ Encapsulates the full 6-phase pipeline from yy07_EM_to_patchseq_types.ipynb
     Phase 2 — Feature harmonisation
     Phase 3 — Scaling  (standard | robust | quantile)
     Phase 4 — UMAP projection  (unsupervised | supervised)
-    Phase 5 — KNN label transfer
+    Phase 5 — KNN label transfer  *or*  cell-to-cell nearest neighbors
     Phase 6 — Visualisation
 
 Usage (quick):
@@ -42,6 +42,23 @@ KNN label-transfer scores:
 
     Save to h5ad:
         lt.save_knn_labels_h5ad('/scratch/h5ad_outputs/exc_minnie_knn_labels.h5ad')
+
+Cell-to-cell nearest neighbors (no label aggregation):
+    After find_nearest_neighbors(), the nearest_neighbors property returns a flat
+    DataFrame with one row per minnie cell recording the k closest patchseq cell
+    IDs, their cluster labels, and UMAP distances:
+
+        lt.find_nearest_neighbors(k=3)
+        lt.nearest_neighbors.columns
+        # id,
+        # nn_1_id, nn_1_label, nn_1_dist,
+        # nn_2_id, nn_2_label, nn_2_dist,
+        # nn_3_id, nn_3_label, nn_3_dist
+
+    plot_umap() will use nn_1_label for the right panel automatically.
+
+    Save to h5ad:
+        lt.save_cell_to_cell_h5ad('/scratch/h5ad_outputs/exc_minnie_cellToCell.h5ad')
 """
 
 from __future__ import annotations
@@ -156,6 +173,7 @@ class UMAPLabelTransfer:
         self._ps_labels: np.ndarray | None = None
         self._mn_predicted: np.ndarray | None = None
         self._mn_knn_stats: pd.DataFrame | None = None
+        self._mn_nearest_neighbors: pd.DataFrame | None = None
         self._cluster_colors: dict[str, str] | None = None
 
     # ------------------------------------------------------------------
@@ -773,6 +791,101 @@ class UMAPLabelTransfer:
             raise RuntimeError("Call transfer_labels() first.")
         return self._mn_knn_stats
 
+    def find_nearest_neighbors(self, k: int = 3) -> "UMAPLabelTransfer":
+        """Record the k nearest patchseq neighbors (IDs, labels, distances) per minnie cell.
+
+        Unlike :meth:`transfer_labels`, this method performs **no label aggregation**.
+        Instead it stores the raw patchseq cell IDs, cluster labels, and UMAP distances
+        for each minnie cell, giving a cell-to-cell mapping.
+
+        Results are stored in :attr:`nearest_neighbors` as a flat DataFrame with one
+        row per minnie cell and 3*k + 1 columns::
+
+            id, nn_1_id, nn_1_label, nn_1_dist,
+            nn_2_id, nn_2_label, nn_2_dist, ...,
+            nn_k_id, nn_k_label, nn_k_dist
+
+        Parameters
+        ----------
+        k:
+            Number of nearest patchseq neighbors to record per minnie cell.  Default 3.
+        """
+        if self._ps_emb is None:
+            raise RuntimeError("Call fit_umap() first.")
+
+        ps_ids = self._df_ps_pd["id"].astype(str).values if "id" in self._df_ps_pd.columns else np.arange(len(self._df_ps_pd)).astype(str)
+        ps_labels = self._df_ps_pd["cluster"].values
+        mn_ids = self._df_mn_pd["id"].astype(str).values
+
+        knn = NearestNeighbors(n_neighbors=k)
+        knn.fit(self._ps_emb)
+        distances, indices = knn.kneighbors(self._mn_emb)
+
+        rows = []
+        for i, (nbr_indices, nbr_dists) in enumerate(zip(indices, distances)):
+            row: dict = {"id": mn_ids[i]}
+            for rank, (idx, dist) in enumerate(zip(nbr_indices, nbr_dists), start=1):
+                row[f"nn_{rank}_id"] = ps_ids[idx]
+                row[f"nn_{rank}_label"] = ps_labels[idx]
+                row[f"nn_{rank}_dist"] = float(dist)
+            rows.append(row)
+
+        nn_df = pd.DataFrame(rows)
+        print(f"Nearest neighbors computed: {nn_df.shape[0]} minnie cells × {k} neighbors")
+        self._mn_nearest_neighbors = nn_df
+        return self
+
+    @property
+    def nearest_neighbors(self) -> pd.DataFrame:
+        """DataFrame of cell-to-cell nearest neighbor results for minnie cells.
+
+        Available after :meth:`find_nearest_neighbors` has been called.  One row
+        per minnie cell with columns:
+
+        - ``id`` — minnie cell ID
+        - ``nn_1_id``, ``nn_1_label``, ``nn_1_dist`` — nearest patchseq cell ID, cluster label, and UMAP distance
+        - ``nn_2_id``, ``nn_2_label``, ``nn_2_dist`` — 2nd nearest
+        - *(... up to nn_k for general k)*
+        """
+        if self._mn_nearest_neighbors is None:
+            raise RuntimeError("Call find_nearest_neighbors() first.")
+        return self._mn_nearest_neighbors
+
+    def save_cell_to_cell_h5ad(self, path: str) -> "UMAPLabelTransfer":
+        """Save cell-to-cell nearest neighbor results to an h5ad file.
+
+        The :attr:`nearest_neighbors` DataFrame is stored as ``adata.obs`` with a
+        plain integer index.  The minnie cell ID is kept as the ``id`` column,
+        accessible via ``adata.obs["id"]`` after reading back.
+
+        Parameters
+        ----------
+        path:
+            Full file path for the output ``.h5ad`` file (e.g.
+            ``'/scratch/h5ad_outputs/exc_minnie_knn_cellToCell.h5ad'``).
+            Parent directories are created automatically.
+        """
+        try:
+            import anndata as ad
+        except ImportError as exc:
+            raise ImportError(
+                "anndata is required for save_cell_to_cell_h5ad. "
+                "Install it with: pip install anndata"
+            ) from exc
+
+        if self._mn_nearest_neighbors is None:
+            raise RuntimeError("Call find_nearest_neighbors() first.")
+
+        obs = self._mn_nearest_neighbors.copy()
+        obs["id"] = obs["id"].astype(str)
+        obs.index = obs.index.astype(str)
+
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        adata = ad.AnnData(obs=obs)
+        adata.write_h5ad(path)
+        print(f"Saved cell-to-cell h5ad → {path}  ({len(obs)} cells)")
+        return self
+
     # ------------------------------------------------------------------
     # Phase 6 — Visualisation
     # ------------------------------------------------------------------
@@ -783,12 +896,25 @@ class UMAPLabelTransfer:
         Left  : both datasets coloured by dataset identity.
         Middle: patchseq cells coloured by true cluster label.
         Right : minnie cells coloured by predicted cluster label.
+
+        When used with the cell-to-cell workflow (:meth:`find_nearest_neighbors`),
+        the right panel uses each minnie cell's nearest neighbor label (``nn_1_label``)
+        for colouring — no separate :meth:`transfer_labels` call is needed.
+
+        Raises ``RuntimeError`` if neither :meth:`transfer_labels` nor
+        :meth:`find_nearest_neighbors` has been called.
         """
         if self._mn_predicted is None:
-            raise RuntimeError("Call transfer_labels() first.")
+            if self._mn_nearest_neighbors is not None:
+                mn_predicted = self._mn_nearest_neighbors["nn_1_label"].values
+            else:
+                raise RuntimeError(
+                    "Call transfer_labels() or find_nearest_neighbors() first."
+                )
+        else:
+            mn_predicted = self._mn_predicted
 
-        ps_labels = self._ps_labels
-        mn_predicted = self._mn_predicted
+        ps_labels = self._ps_labels if self._ps_labels is not None else self._df_ps_pd["cluster"].values
         ps_emb = self._ps_emb
         mn_emb = self._mn_emb
 
