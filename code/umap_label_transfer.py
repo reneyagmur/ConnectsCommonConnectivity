@@ -313,7 +313,7 @@ class UMAPLabelTransfer:
         print(f"Only in patchseq: {len(only_in_ps)}  → {only_in_ps}")
         print(f"Only in minnie:   {len(only_in_mn)}  → {only_in_mn}")
 
-        df_ps_pd = self._df_ps.select(shared + ["cluster"]).to_pandas()
+        df_ps_pd = self._df_ps.select(shared + ["id", "cluster"]).to_pandas()
         df_mn_pd = self._df_mn.select(shared + ["id"]).to_pandas()
 
         ps_before, mn_before = len(df_ps_pd), len(df_mn_pd)
