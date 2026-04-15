@@ -10,6 +10,18 @@
 			"mount": "MMC-minnie-from-patchseq-v2"
 		},
 		{
+			"id": "5df4a32e-4f8d-4dcb-8a52-a63243e816c9",
+			"mount": "wnm_exc_vis_manuscript"
+		},
+		{
+			"id": "5eaa65ca-efb9-43e8-b16c-26cdac7a01c1",
+			"mount": "EM_inh_mettypes"
+		},
+		{
+			"id": "633e6999-35d6-490e-a77f-3d07adf4f13e",
+			"mount": "EM_exc_mettypes"
+		},
+		{
 			"id": "709549ed-cd74-43b7-8a49-ef47299569e6",
 			"mount": "minnie1412"
 		},
