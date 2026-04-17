@@ -59,3 +59,51 @@
 **Option B — introduce a sub-run or cell-group concept on `AlgorithmRun`.** The run is parameterized by (cell population × featureset) pairs, and each `CellToClusterMapping` points to the (run, subgroup) that produced it. More structured, but adds complexity that only pays off if run parameters need to be queried as a first-class object.
 
 **Preferred direction:** Option A unless there is a clear need to query full run parameterization, in which case Option B.
+
+---
+
+## 8. Typo: `heirachy` / `heirarchy` throughout clustering schema
+
+**Problem:** `clustering_schema.yaml` consistently misspells "hierarchy" as `heirarchy` / `heirachy` — appearing in slot names (`heirachy_category`), class names (`HierachyCategory`), and field names (`produced_hierarchies` is correct but `ClusterHierarchy` vs `HierachyCategory` are inconsistent). This propagates into generated `models.py` and all delta lake column names (`heirachy_category` column in `cluster` table).
+
+**Action:** Correct all instances to `hierarchy` in the schema YAML, regenerate `models.py`, and migrate the `heirachy_category` column in any existing delta tables. This is a breaking rename — coordinate with any downstream consumers reading that column by name.
+
+---
+
+## 9. `Cluster` table has no link to its source taxonomy version or dataset
+
+**Problem:** `Cluster` rows are scoped only by `project_id` (e.g. `"visp_met_types"`, `"minnie65"`). This is not descriptive enough: the same project can have multiple clustering runs or taxonomy versions over time, and there is no field to record which version of a taxonomy (e.g. CCN20230722, v1.0) a cluster belongs to. A consumer cannot distinguish clusters from different releases of the same taxonomy without external knowledge.
+
+**Action:** Add a `taxonomy_version` (or `algorithm_run_id`) slot to `Cluster`, making `(project_id, taxonomy_version, id)` the effective unique key. At minimum, add an optional `description` or `version` string field directly on `Cluster`. Long-term, this ties back to Issue 5 (`AlgorithmRun` / `ClusterHierarchy` provenance).
+
+---
+
+## 10. `ProjectionMeasurementMatrix` has no `laterality` field (ipsi vs contra)
+
+**Problem:** Axon projection data naturally splits into ipsilateral and contralateral measurements. The current schema has no field to encode this — only `measurement_type` (e.g. `NUMBER_OF_TIPS`) and `modality`. The workaround used in the WNM ingestion (yy14) is to store two separate `ProjectionMeasurementMatrix` objects (`wnm_exc_proj_ipsi` / `wnm_exc_proj_contra`) and encode laterality in the `id` string. This is informal and not queryable.
+
+**Options:**
+
+**Option A — add a `laterality` enum field** (`IPSILATERAL`, `CONTRALATERAL`, `BILATERAL`, `UNKNOWN`) to `ProjectionMeasurementMatrix`. Clean, queryable, schema-enforced.
+
+**Option B — keep two separate matrices** (current workaround) and document the naming convention. Simple but relies on ID string parsing.
+
+**Preferred direction:** Option A. A `laterality` enum is a natural property of any projection measurement and will apply to future datasets (e.g. anterograde tracer injections) as well.
+
+---
+
+## 11. No schema class for experimental sample metadata (cre line, transgenic reporter)
+
+**Problem:** `FullMorphMetaData_Master.csv` for the WNM dataset contains `cre_line` values like `"Fezf2-CreER;Ai166_439168-191807"` encoding the transgenic mouse line, reporter, and animal ID. No schema class covers this. `CellGeneData` / `BarcodingExperimentMetadata` is for expression matrices and is semantically incorrect. `SingleCellReconstruction` covers morphology provenance but not genetics. This metadata is currently skipped in yy14 with no schema home.
+
+**Action:** Add a `SampleMetadata` class (or extend `DataItem` with optional sample annotation slots) covering at minimum: `cre_line`, `animal_id`, `reporter_line`. These fields are common across Allen Institute datasets and will recur. Alternatively, a generic key-value `Annotation` class on `DataItem` would handle this and other unstructured metadata.
+
+---
+
+## 12. `CellFeatureMatrix` pointer table is never written — wide-form data is unlinked from schema
+
+**Problem:** `CellFeatureMatrix` is the schema class that links a `CellFeatureSet` (metadata) to the physical wide-form data table via `parquet_path` and `cell_index_column`. Without it, a consumer reading the schema has no way to discover where the actual feature numbers live — the `cellfeatures/*` path convention is implicit and undocumented at the schema level. Currently, no `cellfeaturematrix` delta table exists in the combined datasets; all `cellfeatures/*` tables are orphaned from the schema perspective.
+
+**Open design question:** `cellfeatures/exc_morph_features` contains rows for two `project_id` values (`visp_exc_patchseq` and `visp_exc_wnm`) in the same physical table. Should there be one `CellFeatureMatrix` row (ambiguous `project_id`) or two rows pointing to the same `parquet_path`?
+
+**Action:** Create a `cellfeaturematrix` delta table. Backfill one `CellFeatureMatrix` row per existing `cellfeatures/*` table. Add a `CellFeatureMatrix` write step to every future notebook that writes a `cellfeatures/*` table. Resolve the shared-path design question before backfilling.
