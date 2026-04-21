@@ -1,26 +1,30 @@
 # Schema Issues & Action Items
 
-## 1. DataItem IDs are not globally unique across combined datasets
+## ~~1. DataItem IDs are not globally unique across combined datasets~~ [CLOSED]
 
-**Problem:** `id` is declared `identifier: true` in the base schema, but that only means unique within a single class context. When datasets are combined (e.g. in `yy05_combine_deltalakes_visp_microns`), rows are concatenated with no duplicate check. The `ProjectScoped` mixin adds `project_id` but `(project_id, id)` is never enforced as a composite key. EM segment IDs and patchseq specimen IDs could collide as bare strings.
-
-**Action:** Define `(project_id, id)` as the effective composite unique key in the schema. Enforce it at write time in the combination script (dedup check or assert after concat). Consider prefixing IDs with their project namespace before writing to a shared store.
+**Resolution:** Not a bug. Shared DataItem IDs across projects are **by design** — they are the cross-modal join key that links the same physical cell across different datasets (e.g., cell `864691135571546917` appears in both `minnie65` and `visp_exc_patchseq`). The `project_id` scopes the dataset, not the cell identity. No schema change needed.
 
 ---
 
-## 2. `ClusterMembership` and `CellToClusterMapping` model the same thing inconsistently
+## ~~2. `ClusterMembership` and `CellToClusterMapping` model the same thing inconsistently~~ [CLOSED]
 
-**Problem:** Both classes represent "this cell has been assigned to this cluster." The distinction — native membership vs. cross-taxonomy mapping — breaks down in practice, because all patchseq and WNM cells are being *assigned* to external taxonomies, never built them. `ClusterMembership` lacks `MappingSet` entirely, so assignments via it have no provenance (no method name, no source/target dataset). In `patchseq_type_mapping.ipynb`, MET-type assignments for `visp_inh_patchseq` and `visp_exc_patchseq` use `ClusterMembership`, while the equivalent WNM MET-type assignment uses `CellToClusterMapping` — the author flagged this inconsistency in a comment in that notebook.
-
-**Action:** Deprecate `ClusterMembership`. Migrate all existing uses to `CellToClusterMapping` with a required `MappingSet`. The immediate cases are the patchseq MET-type assignments in `patchseq_type_mapping.ipynb`.
+**Resolution:** Not a bug — the two classes have distinct semantics. `ClusterMembership` is for when a dataset *defines* a taxonomy and its cells belong to it natively (e.g., minnie65 CSM types). `CellToClusterMapping` is for when cells are *mapped* to an external taxonomy (e.g., minnie65 cells assigned to visp_met_types via label transfer). The inconsistency in some patchseq notebooks (using the wrong class) is a notebook-level bug, not a schema design issue. A toolkit function can query both classes to retrieve all cell-to-cluster assignments regardless of provenance.
 
 ---
 
-## 3. Cell→cluster associations don't record which taxonomy the cluster belongs to
+## 3. Cluster and mapping records don't identify which taxonomy they refer to (includes versioning)
 
-**Problem:** `ClusterMembership.cluster` is typed as `Cluster`, but cluster labels like `"Glutamatergic"` or `"L6b"` appear in multiple taxonomies (`minnie65`, `visp_met_types`, `tasic_2018_visp_scrnaseq`). The `project_id` on the association row refers to the *cell's* project, not the cluster's taxonomy. `CellToClusterMapping` partially solves this via `MappingSet.target_dataset`, but only if `MappingSet` is present and populated. This is already noted as a problem in `yy05_combine_deltalakes_visp_microns.ipynb`.
+*Absorbs former issue 9 (`Cluster` table has no link to its source taxonomy version).*
 
-**Action:** Add a required `cluster_project_id` (or `target_hierarchy`) field to any cell→cluster association class, explicitly separate from the cell's own `project_id`.
+**Problem — taxonomy ambiguity:** Cluster labels like `"Glutamatergic"` or `"L6b"` appear in multiple taxonomies (`minnie65`, `visp_met_types`, `tasic_2018_visp_scrnaseq`). In `ClusterMembership`, the `project_id` refers to the *cell's* project, not the cluster's taxonomy. `CellToClusterMapping` partially addresses this via `MappingSet.target_dataset`, but only when `MappingSet` is present and populated.
+
+**Problem — taxonomy versioning:** `Cluster` rows are scoped only by `project_id`. The same project can release multiple taxonomy versions over time (e.g., CCN20230722, v1.0), and there is no field to distinguish them. A consumer cannot tell which release a cluster belongs to without external knowledge.
+
+**Possible directions (to discuss):**
+- Add optional `taxonomy_version` string to `Cluster` → solves versioning
+- Add `cluster_project_id` to `ClusterMembership` → solves cross-taxonomy ambiguity for native memberships
+- Rely on existing `MappingSet.target_dataset` for `CellToClusterMapping` and only fix `ClusterMembership` — since native membership implies the cluster's `project_id` matches the membership's `project_id`, ambiguity only arises with versioning
+- Long-term: link `Cluster` to `AlgorithmRun` / `ClusterHierarchy` (ties back to issue 5)
 
 ---
 
@@ -40,11 +44,9 @@
 
 ---
 
-## 6. No schema mechanism for a combined/derived featureset
+## ~~6. No schema mechanism for a combined/derived featureset~~ [CLOSED — deferred]
 
-**Problem:** The EXC and INH skeleton keys feature sets for Minnie65 differ from VISp sets (documented in `yy06_combine_EM_skel-keys_feats.ipynb`) and were therefore written as separate featuresets. The intention to eventually produce a unified combined featureset across EM and patchseq is noted in that notebook, but there is no schema concept to represent a featureset that is derived from or is the intersection/union of others, including feature rename or alignment mappings.
-
-**Action:** Add a featureset composition concept — a `CellFeatureSet` that declares `derived_from` (list of source featuresets) and an optional feature alignment mapping. This is the schema prerequisite for any future combined morphology featureset.
+**Resolution:** Not needed for current work. The feature harmonization step in the label transfer toolkit handles intersection/alignment of feature sets at runtime without requiring schema-level composition. Can revisit if a persistent, published combined featureset becomes necessary.
 
 ---
 
@@ -62,33 +64,30 @@
 
 ---
 
-## 8. Typo: `heirachy` / `heirarchy` throughout clustering schema
+## 8. Typo: `heirachy` → `hierarchy` throughout clustering schema
 
-**Problem:** `clustering_schema.yaml` consistently misspells "hierarchy" as `heirarchy` / `heirachy` — appearing in slot names (`heirachy_category`), class names (`HierachyCategory`), and field names (`produced_hierarchies` is correct but `ClusterHierarchy` vs `HierachyCategory` are inconsistent). This propagates into generated `models.py` and all delta lake column names (`heirachy_category` column in `cluster` table).
+**Problem:** `clustering_schema.yaml` misspells "hierarchy" in multiple places:
+- Slot: `heirachy_category` on `Cluster`
+- Class: `HierachyCategory` (should be `HierarchyCategory`)
+- Description text in `HierachyCategory.level`
 
-**Action:** Correct all instances to `hierarchy` in the schema YAML, regenerate `models.py`, and migrate the `heirachy_category` column in any existing delta tables. This is a breaking rename — coordinate with any downstream consumers reading that column by name.
+These propagate into generated `models.py` field names and delta lake column names (e.g., the `heirachy_category` column in the `cluster` table).
 
----
-
-## 9. `Cluster` table has no link to its source taxonomy version or dataset
-
-**Problem:** `Cluster` rows are scoped only by `project_id` (e.g. `"visp_met_types"`, `"minnie65"`). This is not descriptive enough: the same project can have multiple clustering runs or taxonomy versions over time, and there is no field to record which version of a taxonomy (e.g. CCN20230722, v1.0) a cluster belongs to. A consumer cannot distinguish clusters from different releases of the same taxonomy without external knowledge.
-
-**Action:** Add a `taxonomy_version` (or `algorithm_run_id`) slot to `Cluster`, making `(project_id, taxonomy_version, id)` the effective unique key. At minimum, add an optional `description` or `version` string field directly on `Cluster`. Long-term, this ties back to Issue 5 (`AlgorithmRun` / `ClusterHierarchy` provenance).
+**Action:** Rename all instances to the correct spelling in the schema YAML, regenerate `models.py`, and rename the `heirachy_category` column in existing delta tables. This is a breaking change — best done now while there are no external consumers.
 
 ---
 
-## 10. `ProjectionMeasurementMatrix` has no `laterality` field (ipsi vs contra)
+## ~~9. `Cluster` table has no link to its source taxonomy version or dataset~~ [CLOSED — merged into #3]
 
-**Problem:** Axon projection data naturally splits into ipsilateral and contralateral measurements. The current schema has no field to encode this — only `measurement_type` (e.g. `NUMBER_OF_TIPS`) and `modality`. The workaround used in the WNM ingestion (yy14) is to store two separate `ProjectionMeasurementMatrix` objects (`wnm_exc_proj_ipsi` / `wnm_exc_proj_contra`) and encode laterality in the `id` string. This is informal and not queryable.
+**Resolution:** The taxonomy versioning concern is now part of issue 3, which covers both taxonomy identification and versioning in a single issue.
 
-**Options:**
+---
 
-**Option A — add a `laterality` enum field** (`IPSILATERAL`, `CONTRALATERAL`, `BILATERAL`, `UNKNOWN`) to `ProjectionMeasurementMatrix`. Clean, queryable, schema-enforced.
+## 10. `ProjectionMeasurementMatrix` needs a `laterality` field
 
-**Option B — keep two separate matrices** (current workaround) and document the naming convention. Simple but relies on ID string parsing.
+**Problem:** Axon projection data splits into ipsilateral and contralateral measurements, but the schema has no field for this. The WNM ingestion (yy14) works around it by storing two separate matrices (`wnm_exc_proj_ipsi` / `wnm_exc_proj_contra`) with laterality encoded in the `id` string — not queryable.
 
-**Preferred direction:** Option A. A `laterality` enum is a natural property of any projection measurement and will apply to future datasets (e.g. anterograde tracer injections) as well.
+**Action:** Add a `Laterality` enum to `base_schema.yaml` with values `IPSILATERAL`, `CONTRALATERAL`, `BILATERAL`, `UNKNOWN`. Add a `laterality` slot to `ProjectionMeasurementMatrix` in `projection_schema.yaml`. This is a natural property of any projection measurement and will apply to future datasets (anterograde tracers, rabies, etc.).
 
 ---
 
@@ -100,10 +99,27 @@
 
 ---
 
-## 12. `CellFeatureMatrix` pointer table is never written — wide-form data is unlinked from schema
+## 12. `CellFeatureMatrix` pointer table is never written — wide-form data is unlinked from schema [ETL TODO, not a schema fix]
 
-**Problem:** `CellFeatureMatrix` is the schema class that links a `CellFeatureSet` (metadata) to the physical wide-form data table via `parquet_path` and `cell_index_column`. Without it, a consumer reading the schema has no way to discover where the actual feature numbers live — the `cellfeatures/*` path convention is implicit and undocumented at the schema level. Currently, no `cellfeaturematrix` delta table exists in the combined datasets; all `cellfeatures/*` tables are orphaned from the schema perspective.
+> **Note:** This is not a schema issue — the `CellFeatureMatrix` class already exists and is correctly defined. The problem is that ETL notebooks don't write it. This belongs in the ETL tooling backlog.
 
-**Open design question:** `cellfeatures/exc_morph_features` contains rows for two `project_id` values (`visp_exc_patchseq` and `visp_exc_wnm`) in the same physical table. Should there be one `CellFeatureMatrix` row (ambiguous `project_id`) or two rows pointing to the same `parquet_path`?
+**Problem:** No `cellfeaturematrix` delta table exists in the combined datasets. All `cellfeatures/*` tables are orphaned from the schema — a consumer has no schema-level way to discover where feature data lives without knowing the `cellfeatures/*` path convention.
 
-**Action:** Create a `cellfeaturematrix` delta table. Backfill one `CellFeatureMatrix` row per existing `cellfeatures/*` table. Add a `CellFeatureMatrix` write step to every future notebook that writes a `cellfeatures/*` table. Resolve the shared-path design question before backfilling.
+**Open design question:** `cellfeatures/exc_morph_features` contains rows for two `project_id` values (`visp_exc_patchseq` and `visp_exc_wnm`) in the same physical table. Should there be one `CellFeatureMatrix` row or two rows pointing to the same `parquet_path`?
+
+**Action:** Add a helper function to the toolkit that auto-writes a `CellFeatureMatrix` row whenever a `cellfeatures/*` table is written. Backfill existing tables. Resolve the shared-path design question first.
+
+---
+
+## 13. Dataset-level projection coverage flag per brain region [NEW]
+
+**Problem:** There is no schema-level way to ask "which CCF brain regions does dataset X have projection data in?" A consumer must load the full `ProjectionMeasurementMatrix` (cells × regions), check which columns have any non-zero values, and derive the answer themselves. This is a common query for cross-dataset comparison and should be precomputed.
+
+**Proposed solution:** A toolkit function reads a `ProjectionMeasurementMatrix`, collapses across cells (any value > 0 per region column), and produces a 1×regions binary vector indicating "this dataset has projection data in region X." The result is written to a new schema class or field.
+
+**Design options (to discuss):**
+- Add a `region_coverage` field (list of bool, parallel to `region_index`) directly on `ProjectionMeasurementMatrix` — simple, co-located with the data
+- Create a standalone `ProjectionCoverage` class referencing the matrix — more flexible, but adds indirection
+- Add a `has_projection_data` flag to `BrainRegionAssociation` — per-dataset-per-region, queryable, but more rows
+
+**Action:** Decide on the schema representation. Implement the toolkit function that computes coverage from existing projection data and writes it to the chosen schema target.
